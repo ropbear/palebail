@@ -1,0 +1,7 @@
+requests
+xmltodict
+json
+pathlib
+argparse
+datetime
+xml

@@ -1,0 +1,7 @@
+logs/*
+loot/*
+.vscode/
+*.lock
+*.log
+__pycache__/*
+*.pyc
