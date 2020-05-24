@@ -51,12 +51,17 @@ def main():
         help="""List of keywords to enumerate""",
         default="",
         metavar="keyfile")
+    parser.add_argument("-t", "--threads", dest="threads",
+        help="""Number of threads to use""",
+        default="1",
+        metavar="threads")
     parser.add_argument("-s", "--silent", dest="silent",
         help="""Silent mode - only prints Found buckets""",
         action="store_true")
     parser.add_argument("-v", "--verbose", dest="verbose",
         help="""Verbose mode, log everything to stdout and logfile""",
         action="store_true")
+
 
     args = parser.parse_args()
 
@@ -80,7 +85,7 @@ def main():
         LOGGER.verbosity = 3
     LOGGER.log("PALEBAIL","STAT","Starting up Palebail")
 
-    hunter = Hunter(args.modifiers,args.keyword,args.keyfile)
+    hunter = Hunter(args.modifiers,args.keyword,args.keyfile,args.threads,LOGGER)
 
     # Main sequence and exception handling
     try:
