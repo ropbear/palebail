@@ -5,3 +5,4 @@ loot/*
 *.log
 __pycache__/*
 *.pyc
+TODO*
