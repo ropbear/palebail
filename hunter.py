@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 class Hunter:
     # PURPOSE: Provide object to wrap logic surrounding the requests for the hunt
-    # INPUT: Modifiers wordlist (postfix), keyword or keyfile (prefix)
+    # INPUT: Modifiers wordlist (prefix,suffix), keyword or wordlist of keywords
 
     def __init__(self,modifiers,keyword="",keyfile=None,threads="1",logger=None):
         # using self.logger in case there is a bug with using global logger
@@ -19,7 +19,7 @@ class Hunter:
         #Open indicated files
         try:
             with open(modifiers, "r") as modsFile:
-                self.bucket_names = [line.strip() for line in modsFile]
+                self.modifiers = [line.strip() for line in modsFile]
         except FileNotFoundError:
             self.logger.log("HUNTER","ERRO","Modifiers wordlist {} not found.".format(modifiers))
             raise FileNotFoundError
@@ -68,7 +68,6 @@ class Hunter:
         self.logger.log("HUNTER","WARN","rotateIP() not yet implemented!")
         pass
 
-
     def doRateLimitAvoid(self,lastBucket):
         # PURPOSE: Avoid rate limiting from Amazon
         # INPUT: bucket objcet
@@ -81,7 +80,6 @@ class Hunter:
         self.metadata['failed_hit'] += 1
         self.logger.log("HUNTER","WARN","{} Rate limit hit".format(lastBucket.name))
         return False
-
 
     def getBucketState(self,bucket):
         # PURPOSE: Assign one of the statuses to a bucket object based on response
@@ -156,20 +154,30 @@ class Hunter:
                     "Metadata...\n{}".format(meta)
                 )
 
+    def nameGenerator(self,keyword):
+        # PURPOSE: modify the keyword and generate new name candidates
+        # INPUT: keyword
+        # RETURN: list of candidates from keyword seed
+        formatted_names = []
+        for name in self.modifiers:
+            for char in self.COMBINATORS:
+                # format as prefix and suffix with modifier
+                formatted_names.insert(0,"{}{}{}".format(keyword, char, name))
+                formatted_names.insert(0,"{}{}{}".format(name, char, keyword))
+        return formatted_names
+
     def hunt(self):
         # PURPOSE: provide threading
         # INPUT: Self
         # RETURN: Number of attempts
         with ThreadPoolExecutor(max_workers=self.threads) as executor:
             for k in self.keywords:
-                for name in self.bucket_names:
-                    for char in self.COMBINATORS:
-                        # format bucket name attempt
-                        cur_name = "{}{}{}".format(k, char, name)
-                        self.processes.append(executor.submit(self.parseBucket,cur_name))
-
+                # permutate the names based on the modifiers wordlist...
+                fnames = self.nameGenerator(k)
+                # ... then kick off a thread for each name.
+                for fname in fnames:
+                    self.processes.append(executor.submit(self.parseBucket,fname))
         return self.metadata['total']
-    
 
     def status(self):
         # log hunt meta results

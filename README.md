@@ -13,7 +13,7 @@ I was going to write a bunch of stuff for this, but you get the idea. Open S3 bu
 ```
 usage: palebail.py [-h] 
   [-m modifiers] [-o out]
-  [-k keyword] [-K keyfile]
+  [-k keyword] [-w wordlist]
   [-t threads] [-s] [-v] 
 
 optional arguments:
@@ -23,7 +23,7 @@ optional arguments:
   -o out, --out out     Output file (default is <timestamp>.log in ./logs/
   -k keyword, --keyword keyword
                         Keyword to base the search around
-  -K keyfile, --keyfile keyfile
+  -w wordlist, --wordlist wordlist
                         List of keywords to enumerate
   -s, --silent          Silent mode - only prints Found buckets
   -v, --verbose         Verbose mode, log everything to stdout and logfile
@@ -40,7 +40,7 @@ palebail.py -k keyword -v -m modifiers/default.txt -o output.log
 This is an example of searching all keywords in `wlist.txt` with modifiers from `modifiers/default.txt`, and only printing to `STDOUT` buckets that have been found.
 
 ```python3
-palebail.py -K wordlists/wlist.txt -s
+palebail.py -w wordlists/wlist.txt -s
 ```
 
 ### References

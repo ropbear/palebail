@@ -47,10 +47,10 @@ def main():
         help="""Keyword to base the search around""",
         default="",
         metavar="keyword")
-    parser.add_argument("-K", "--keyfile", dest="keyfile",
+    parser.add_argument("-w", "--wordlist", dest="wordlist",
         help="""List of keywords to enumerate""",
         default="",
-        metavar="keyfile")
+        metavar="wordlist")
     parser.add_argument("-t", "--threads", dest="threads",
         help="""Number of threads to use""",
         default="1",
@@ -65,11 +65,9 @@ def main():
 
     args = parser.parse_args()
 
-    if (args.keyword == "" and args.keyfile == "") or len(sys.argv) == 1:
+    if (args.keyword == "" and args.wordlist == "") or len(sys.argv) == 1:
         print(
-            "Palebail must be run with at least:\n"+
-            "\tA keyword/keyfile (-k / -K)\n"+
-            "\tA modifiers wordlist (-w)\n"
+            "Palebail must be run with at least a keyword/wordlist (-k / -w)\n"+
             "Use -h or --help for help"
         )
         sys.exit(1)
@@ -85,7 +83,7 @@ def main():
         LOGGER.verbosity = 3
     LOGGER.log("PALEBAIL","STAT","Starting up Palebail")
 
-    hunter = Hunter(args.modifiers,args.keyword,args.keyfile,args.threads,LOGGER)
+    hunter = Hunter(args.modifiers,args.keyword,args.wordlist,args.threads,LOGGER)
 
     # Main sequence and exception handling
     try:
