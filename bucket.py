@@ -2,42 +2,48 @@ from xml.dom import minidom
 import xml.etree.ElementTree as ET
 import requests
 
+# GLOBALS
+TIMEOUT = 3
+
 # HELPERS
 def xml_prettyprint(root):
     return minidom.parseString(ET.tostring(root)).toprettyxml(indent="\t")
 
 class Bucket:
-    # PURPOSE: Provide an OOP structure to reference s3 buckets
-    # INPUT: Name of bucket
-    # DOCS:
-    # |__[ATTR] NAME
-    # |_____ Name of the bucket
-    # |__[ATTR] STATUS
-    # |_____ -1: Rate limit was hit and bucket was not assessed
-    # |_____  0: Bucket does not exist
-    # |_____  1: Bucket exists but access is denied
-    # |_____  2: Bucket exists, but all access is disabled
-    # |_____  3: Bucket exists and is listable
-    # |_____  4: Bucket exists and is readable
-    # |_____  5: Bucket exists and is writeable
-    # |_____  NOTE: Currently, the results aggregate all of the statuses, so one bucket will
-    # |_____        count for multiple values when being listed (except for the totals). In
-    # |_____        the context of the Hunter object, the status is the highest recorded level
-    # |_____        of access achieved.
-    # |__[ATTR] CONTENT
-    # |_____ A newline separated list of [NUM,MODIFIED,OWNER,SIZE,FILENAME] retrieved from the bucket.
-    # |__[ATTR] DOWNLOAD
-    # |_____ Boolean: True - the first file was downloadable
-    # |__[ATTR] WRITE
-    # |_____ Boolean: True - the bucket was writeable
-    # |_____ NOTE: This has not yet been implemented as we are attempting to find a way to reliably
-    # |_____       determine write capability without actually writing.
+    """
+    PURPOSE: Provide an OOP structure to reference s3 buckets
+    INPUT: Name of bucket
+    DOCS:
+    |__[ATTR] NAME
+    |_____ Name of the bucket
+    |__[ATTR] STATUS
+    |_____ -1: Rate limit was hit and bucket was not assessed
+    |_____  0: Bucket does not exist
+    |_____  1: Bucket exists but access is denied
+    |_____  2: Bucket exists, but all access is disabled
+    |_____  3: Bucket exists and is listable
+    |_____  4: Bucket exists and is readable
+    |_____  5: Bucket exists and is writeable
+    |_____  NOTE: Currently, the results aggregate all of the statuses, so one bucket will
+    |_____        count for multiple values when being listed (except for the totals). In
+    |_____        the context of the Hunter object, the status is the highest recorded level
+    |_____        of access achieved.
+    |__[ATTR] CONTENT
+    |_____ A newline separated list of [NUM,MODIFIED,OWNER,SIZE,FILENAME] retrieved from the bucket.
+    |__[ATTR] DOWNLOAD
+    |_____ Boolean: True - the first file was downloadable
+    |__[ATTR] WRITE
+    |_____ Boolean: True - the bucket was writeable
+    |_____ NOTE: This has not yet been implemented as we are attempting to find a way to reliably
+    |_____       determine write capability without actually writing.
+    """
 
     name = ""
     status = 0
     content = ""
     download = False
     write = False
+    meta = ""
 
     def __init__(self,name,badchars):
         #TODO: make this a list instead of string, enumerating possible names based on
@@ -49,7 +55,7 @@ class Bucket:
         self.url = "https://{}.s3.amazonaws.com/".format(self.name)
     
     def checkRateLimit(self):
-        r = requests.get(self.url+"?location")
+        r = requests.get(self.url+"?location",timeout=TIMEOUT)
         return True if ET.fromstring(r.text)[0].text != "NoSuchBucket" else False
 
     def retrieveData(self,seshObj=False,params=""):
@@ -57,11 +63,12 @@ class Bucket:
         return ET.fromstring(r.text) if not seshObj else r
 
     def isReadable(self,testURL):
-        # PURPOSE: Test to see if FIRST object of a bucket is downloadable
-        # INPUT: Bucket object, URL for testing downloadablity
-        # RETURN: True if contents can be downloaded / read
-
-        r = requests.get(testURL)
+        """
+        PURPOSE: Test to see if FIRST object of a bucket is downloadable
+        INPUT: Bucket object, URL for testing downloadablity
+        RETURN: True if contents can be downloaded / read
+        """
+        r = requests.get(testURL,timeout=TIMEOUT)
         if "AccessDenied" not in r.text and "NoSuchKey" not in r.text:
             return True
         else:
@@ -69,10 +76,11 @@ class Bucket:
             self.status = 4
 
     def isWriteable(self,retryURL=None):
-        # PURPOSE: Test to see if a bucket can be written to
-        # INPUT: bucket object
-        # RETURN: Boolean: True - it can be written to
-
+        """
+        PURPOSE: Test to see if a bucket can be written to
+        INPUT: bucket object
+        RETURN: Boolean: True - it can be written to
+        """
         endpoint = retryURL if retryURL else self.url
         r = requests.put(
             endpoint+"chonk.txt",
@@ -90,6 +98,7 @@ class Bucket:
                     ( o.o )
                      > ^ <
             """,
+            timeout=TIMEOUT,
         )
         if "TemporaryRedirect" in r.text:
             root = ET.fromstring(r.text)
@@ -123,11 +132,12 @@ class Bucket:
             self.status = 3
             return True
 
-    def listContent(self):
-        # PURPOSE: List and assign content to a bucket object
-        # INPUT: Bucket object
-        # RETURN: URL to test for readability
-
+    def enumContent(self):
+        """
+        PURPOSE: List and assign content to a bucket object
+        INPUT: Bucket object
+        RETURN: URL to test for readability
+        """
         r = self.retrieveData(True)
         root = ET.fromstring(r.text)
         linefmt = "\t{}\t{}\t{}\t\t{}\t{}\n"

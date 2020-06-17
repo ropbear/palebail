@@ -1,16 +1,18 @@
 from bucket import Bucket
 import requests
-
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 class Hunter:
-    # PURPOSE: Provide object to wrap logic surrounding the requests for the hunt
-    # INPUT: Modifiers wordlist (postfix), keyword or keyfile (prefix)
-
-    def __init__(self,modifiers,keyword="",keyfile=None):
+    """
+    PURPOSE: Provide object to wrap logic surrounding the requests for the hunt
+    INPUT: Modifiers wordlist (prefix,suffix), keyword or wordlist of keywords
+    """
+    def __init__(self,modifiers,keyword="",keyfile=None,threads="1",logger=None):
         # using self.logger in case there is a bug with using global logger
-        self.logger = None
+        self.logger = logger
         self.COMBINATORS = []
         self.BADCHARS = []
+        self.THREADMAX = 20
 
         # begin session
         self.session = requests.session()
@@ -18,7 +20,7 @@ class Hunter:
         #Open indicated files
         try:
             with open(modifiers, "r") as modsFile:
-                self.bucket_names = [line.strip() for line in modsFile]
+                self.modifiers = [line.strip() for line in modsFile]
         except FileNotFoundError:
             self.logger.log("HUNTER","ERRO","Modifiers wordlist {} not found.".format(modifiers))
             raise FileNotFoundError
@@ -45,24 +47,35 @@ class Hunter:
             "failed_hit":0
         }
 
-        self.buckets = {}
+        # Determine number of threads
+        try:
+            self.threads = int(threads)
+            if self.threads <= 0 or self.threads > self.THREADMAX:
+                raise ValueError
+        except ValueError:
+            self.logger.log("HUNTER","ERRO","Thread number {} is not an integer between 1 and {}".format(threads,self.THREADMAX))
+            self.logger.log("HUNTER","WARN","Running single-threaded")
+            self.threads = 1
 
+        self.buckets = {}
+        self.processes = [] 
 
     def rotateIP(self):
-        # PURPOSE: Amazon rate-limits the requests to S3 by IP, so it must be rotated
-        # INPUT: None
-        # RETURN: None
-
+        """
+        PURPOSE: Amazon rate-limits the requests to S3 by IP, so it must be rotated
+        INPUT: None
+        RETURN: None
+        """
         # TODO implement IP rotation
-        self.logger.log("HUNTER","WARN","rotateIP() not yet implemented! Still rate limited.")
+        self.logger.log("HUNTER","WARN","rotateIP() not yet implemented!")
         pass
 
-
     def doRateLimitAvoid(self,lastBucket):
-        # PURPOSE: Avoid rate limiting from Amazon
-        # INPUT: bucket objcet
-        # RETURN: Boolean
-
+        """
+        PURPOSE: Avoid rate limiting from Amazon
+        INPUT: bucket objcet
+        RETURN: Boolean
+        """
         self.rotateIP()
         # TODO retry same bucket name
         lastBucket.status = -1
@@ -71,11 +84,12 @@ class Hunter:
         self.logger.log("HUNTER","WARN","{} Rate limit hit".format(lastBucket.name))
         return False
 
-
     def getBucketState(self,bucket):
-        # PURPOSE: Assign one of the statuses to a bucket object based on response
-        # INPUT: Bucket object
-        # RETURN: True - open or exists, more work to be done; False - DNE. No more work.
+        """
+        PURPOSE: Assign one of the statuses to a bucket object based on response
+        INPUT: Bucket object
+        RETURN: True - open or exists, more work to be done; False - DNE. No more work.
+        """
         try:
             bucket.assignState()
         except requests.exceptions.ConnectionError:
@@ -96,63 +110,98 @@ class Hunter:
             return True # catch for status 3
         return False # catch for status -1,0,1,2
 
+    def parseBucket(self,cur_name):
+        """
+        PURPOSE: provide threadsafe request parsing functionality
+        INPUT: Self, Bucket Name
+        RETURN: None
+        """
+        # init Bucket object
+        bucket = Bucket(cur_name,self.BADCHARS)
+
+        # assign state of bucket and associated objects
+        if self.getBucketState(bucket):
+            
+            testURL = bucket.enumContent()
+            # then, see if the contents are readable
+            if bucket.isReadable(testURL):
+                bucket.status = 4
+                self.metadata['open_read'] += 1
+                # if so, mark for download
+                bucket.download = True
+            # finally, check to see if it is writeable
+            if bucket.isWriteable():
+                bucket.status = 5
+                self.metadata['open_write'] += 1
+                bucket.write = True
+        
+        # if the rate limit is hit, conduct avoidance
+        elif bucket.status == -1:
+            if not self.doRateLimitAvoid(bucket): # NOT THREADSAFE
+                return self.metadata['total']
+
+        # store the bucket data in memory
+        if bucket.status > 0: # if the bucket exists
+            self.buckets[bucket.name] = bucket
+            replies = ["non-existent","denied","disabled","open","readable","writeable"]
+            self.logger.log(
+                "HUNTER",
+                "INFO",
+                "Bucket {} is {}".format(bucket.name,replies[bucket.status])
+            )
+            bucket.meta = bucket.metadata()
+
+    def recordBucket(self,bucket):
+        if bucket.status <= 2:
+            return # bucket DNE or disabled / denied
+        self.logger.log("HUNTER","INFO","######## Record for {} ########".format(bucket.name))
+        if bucket.meta:
+            self.logger.log(
+                "HUNTER",
+                "INFO",
+                "Metadata for {}...\n{}".format(bucket.name,bucket.meta)
+            )
+
+        # list the content, get a valid URL to test
+        self.logger.log("HUNTER","INFO","Listing {}".format(bucket.name))
+        self.logger.log("HUNTER","INFO","\n{}".format(bucket.content))
+
+        self.logger.log("HUNTER","INFO","######## End of Record ########")
+
+    def nameGenerator(self,keyword):
+        """
+        PURPOSE: modify the keyword and generate new name candidates
+        INPUT: keyword
+        RETURN: list of candidates from keyword seed
+        """
+        formatted_names = []
+        for name in self.modifiers:
+            if name != "":
+                for char in self.COMBINATORS:
+                    # format as prefix and suffix with modifier
+                    formatted_names.insert(0,"{}{}{}".format(keyword, char, name))
+                    formatted_names.insert(0,"{}{}{}".format(name, char, keyword))
+        return formatted_names
 
     def hunt(self):
-        # PURPOSE: provide logic for iterative hunt
-        # INPUT: Self
-        # RETURN: Number of attempts
-
-        for k in self.keywords:
-            for name in self.bucket_names:
-                for char in self.COMBINATORS:
-
-                    # format bucket name attempt
-                    cur_name = "{}{}{}".format(k, char, name)
-
-                    # init Bucket object
-                    bucket = Bucket(cur_name,self.BADCHARS)
-
-                    # assign state of bucket and associated objects
-                    if self.getBucketState(bucket):
-                        # list the content, get a valid URL to test
-                        self.logger.log("HUNTER","INFO","Listing {}".format(bucket.name))
-                        testURL = bucket.listContent()
-                        self.logger.log("HUNTER","INFO","\n{}".format(bucket.content))
-                        # then, see if the contents are readable
-                        if bucket.isReadable(testURL):
-                            bucket.status = 4
-                            self.metadata['open_read'] += 1
-                            # if so, mark for download
-                            bucket.download = True
-                        # finally, check to see if it is writeable
-                        if bucket.isWriteable():
-                            bucket.status = 5
-                            self.metadata['open_write'] += 1
-                            bucket.write = True
+        """
+        PURPOSE: provide threading
+        INPUT: Self
+        RETURN: Number of attempts
+        """
+        with ThreadPoolExecutor(max_workers=self.threads) as executor:
+            for k in self.keywords:
+                # permutate the names based on the modifiers wordlist...
+                fnames = self.nameGenerator(k)
+                # ... then kick off a thread for each name.
+                for fname in fnames:
+                    self.processes.append(executor.submit(self.parseBucket,fname))
                     
-                    # if the rate limit is hit, conduct avoidance
-                    elif bucket.status == -1:
-                        if not self.doRateLimitAvoid(bucket):
-                            return self.metadata['total']
-
-                    # store the bucket data in memory
-                    if bucket.status > 0: # if the bucket exists
-                        self.buckets[bucket.name] = bucket
-                        replies = ["non-existent","denied","disabled","open","readable","writeable"]
-                        self.logger.log(
-                            "HUNTER",
-                            "INFO",
-                            "Bucket {} is {}".format(bucket.name,replies[bucket.status])
-                        )
-                        meta = bucket.metadata()
-                        if meta:
-                            self.logger.log(
-                                "HUNTER",
-                                "INFO",
-                                "Metadata...\n{}".format(meta)
-                            )
+        self.logger.log("HUNTER","STAT","Parsing complete, compiling data...")
+        for name in self.buckets.keys():
+            # writing to a file/stdout was not threadsafe
+            self.recordBucket(self.buckets[name])
         return self.metadata['total']
-    
 
     def status(self):
         # log hunt meta results
