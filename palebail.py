@@ -25,7 +25,13 @@ SILENT = False
 VERBOSE = False
 # Configure combinators/joining characters
 COMBINATORS = ["-","","_"]
-BADCHARS = [" ",".","&","=","'",'"',"#","^"]
+# a little lesson in RFC-1738 and RFC-2396 via StackOverflow
+# https://stackoverflow.com/questions/1547899/which-characters-make-a-url-invalid
+control = [chr(x) for x in range(0,0x20)]
+delims = ["<",">","#","%",'"']
+unwise = ["{","}","|","\\","^","[","]","`"," "]
+reserved = [";","/","?",":","@","&","=","+","$",","]
+BADCHARS = control+delims+unwise+reserved
 
 
 

@@ -3,9 +3,10 @@ import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 class Hunter:
-    # PURPOSE: Provide object to wrap logic surrounding the requests for the hunt
-    # INPUT: Modifiers wordlist (prefix,suffix), keyword or wordlist of keywords
-
+    """
+    PURPOSE: Provide object to wrap logic surrounding the requests for the hunt
+    INPUT: Modifiers wordlist (prefix,suffix), keyword or wordlist of keywords
+    """
     def __init__(self,modifiers,keyword="",keyfile=None,threads="1",logger=None):
         # using self.logger in case there is a bug with using global logger
         self.logger = logger
@@ -46,7 +47,7 @@ class Hunter:
             "failed_hit":0
         }
 
-        #Determine number of threads
+        # Determine number of threads
         try:
             self.threads = int(threads)
             if self.threads <= 0 or self.threads > self.THREADMAX:
@@ -57,22 +58,24 @@ class Hunter:
             self.threads = 1
 
         self.buckets = {}
-        self.processes = []        
+        self.processes = [] 
 
     def rotateIP(self):
-        # PURPOSE: Amazon rate-limits the requests to S3 by IP, so it must be rotated
-        # INPUT: None
-        # RETURN: None
-
+        """
+        PURPOSE: Amazon rate-limits the requests to S3 by IP, so it must be rotated
+        INPUT: None
+        RETURN: None
+        """
         # TODO implement IP rotation
         self.logger.log("HUNTER","WARN","rotateIP() not yet implemented!")
         pass
 
     def doRateLimitAvoid(self,lastBucket):
-        # PURPOSE: Avoid rate limiting from Amazon
-        # INPUT: bucket objcet
-        # RETURN: Boolean
-
+        """
+        PURPOSE: Avoid rate limiting from Amazon
+        INPUT: bucket objcet
+        RETURN: Boolean
+        """
         self.rotateIP()
         # TODO retry same bucket name
         lastBucket.status = -1
@@ -82,9 +85,11 @@ class Hunter:
         return False
 
     def getBucketState(self,bucket):
-        # PURPOSE: Assign one of the statuses to a bucket object based on response
-        # INPUT: Bucket object
-        # RETURN: True - open or exists, more work to be done; False - DNE. No more work.
+        """
+        PURPOSE: Assign one of the statuses to a bucket object based on response
+        INPUT: Bucket object
+        RETURN: True - open or exists, more work to be done; False - DNE. No more work.
+        """
         try:
             bucket.assignState()
         except requests.exceptions.ConnectionError:
@@ -106,19 +111,18 @@ class Hunter:
         return False # catch for status -1,0,1,2
 
     def parseBucket(self,cur_name):
-        # PURPOSE: provide request parsing functionality
-        # INPUT: Self, Bucket Name
-        # RETURN: None
-
+        """
+        PURPOSE: provide threadsafe request parsing functionality
+        INPUT: Self, Bucket Name
+        RETURN: None
+        """
         # init Bucket object
         bucket = Bucket(cur_name,self.BADCHARS)
 
         # assign state of bucket and associated objects
         if self.getBucketState(bucket):
-            # list the content, get a valid URL to test
-            self.logger.log("HUNTER","INFO","Listing {}".format(bucket.name))
-            testURL = bucket.listContent()
-            self.logger.log("HUNTER","INFO","\n{}".format(bucket.content))
+            
+            testURL = bucket.enumContent()
             # then, see if the contents are readable
             if bucket.isReadable(testURL):
                 bucket.status = 4
@@ -131,10 +135,9 @@ class Hunter:
                 self.metadata['open_write'] += 1
                 bucket.write = True
         
-        # NOT THREADSAFE
         # if the rate limit is hit, conduct avoidance
         elif bucket.status == -1:
-            if not self.doRateLimitAvoid(bucket):
+            if not self.doRateLimitAvoid(bucket): # NOT THREADSAFE
                 return self.metadata['total']
 
         # store the bucket data in memory
@@ -146,30 +149,46 @@ class Hunter:
                 "INFO",
                 "Bucket {} is {}".format(bucket.name,replies[bucket.status])
             )
-            meta = bucket.metadata()
-            if meta:
-                self.logger.log(
-                    "HUNTER",
-                    "INFO",
-                    "Metadata...\n{}".format(meta)
-                )
+            bucket.meta = bucket.metadata()
+
+    def recordBucket(self,bucket):
+        if bucket.status <= 2:
+            return # bucket DNE or disabled / denied
+        self.logger.log("HUNTER","INFO","######## Record for {} ########".format(bucket.name))
+        if bucket.meta:
+            self.logger.log(
+                "HUNTER",
+                "INFO",
+                "Metadata for {}...\n{}".format(bucket.name,bucket.meta)
+            )
+
+        # list the content, get a valid URL to test
+        self.logger.log("HUNTER","INFO","Listing {}".format(bucket.name))
+        self.logger.log("HUNTER","INFO","\n{}".format(bucket.content))
+
+        self.logger.log("HUNTER","INFO","######## End of Record ########")
 
     def nameGenerator(self,keyword):
-        # PURPOSE: modify the keyword and generate new name candidates
-        # INPUT: keyword
-        # RETURN: list of candidates from keyword seed
+        """
+        PURPOSE: modify the keyword and generate new name candidates
+        INPUT: keyword
+        RETURN: list of candidates from keyword seed
+        """
         formatted_names = []
         for name in self.modifiers:
-            for char in self.COMBINATORS:
-                # format as prefix and suffix with modifier
-                formatted_names.insert(0,"{}{}{}".format(keyword, char, name))
-                formatted_names.insert(0,"{}{}{}".format(name, char, keyword))
+            if name != "":
+                for char in self.COMBINATORS:
+                    # format as prefix and suffix with modifier
+                    formatted_names.insert(0,"{}{}{}".format(keyword, char, name))
+                    formatted_names.insert(0,"{}{}{}".format(name, char, keyword))
         return formatted_names
 
     def hunt(self):
-        # PURPOSE: provide threading
-        # INPUT: Self
-        # RETURN: Number of attempts
+        """
+        PURPOSE: provide threading
+        INPUT: Self
+        RETURN: Number of attempts
+        """
         with ThreadPoolExecutor(max_workers=self.threads) as executor:
             for k in self.keywords:
                 # permutate the names based on the modifiers wordlist...
@@ -177,6 +196,11 @@ class Hunter:
                 # ... then kick off a thread for each name.
                 for fname in fnames:
                     self.processes.append(executor.submit(self.parseBucket,fname))
+                    
+        self.logger.log("HUNTER","STAT","Parsing complete, compiling data...")
+        for name in self.buckets.keys():
+            # writing to a file/stdout was not threadsafe
+            self.recordBucket(self.buckets[name])
         return self.metadata['total']
 
     def status(self):
