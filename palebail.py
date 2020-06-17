@@ -30,7 +30,7 @@ COMBINATORS = ["-","","_"]
 control = [chr(x) for x in range(0,0x20)]
 delims = ["<",">","#","%",'"']
 unwise = ["{","}","|","\\","^","[","]","`"," "]
-reserved = [";","/","?",":","@","&","=","+","$",","]
+reserved = [";","/","?",":","@","&","=","+","$",",","."]
 BADCHARS = control+delims+unwise+reserved
 
 
