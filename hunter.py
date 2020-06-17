@@ -205,17 +205,32 @@ class Hunter:
 
     def status(self):
         # log hunt meta results
+        total = self.metadata['total']
+        try:
+            valid = "{:.2f}".format(100*(1 - (
+                (self.metadata['open_list']+self.metadata['open_read']+self.metadata['open_write']) / \
+                (self.metadata['total'] - self.metadata['failed_hit'])
+                ))
+            )
+        except ZeroDivisionError:
+            valid = "{:.2f}".format(0)
+        denied = self.metadata['denied']
+        disabled = self.metadata['disabled']
+        listable = self.metadata['open_list']
+        downloadable = self.metadata['open_read']
+        writeable = self.metadata['open_write']
+        ratelimits = self.metadata['rate_limits']
         self.logger.log("HUNTER","STAT","Hunt complete.")
-        self.logger.log("HUNTER","INFO","\nResults:\n\tTotal tries: {}\n\tPercent Valid: {}%\n\tDenied: {}\n\tDisabled: {}\n\tListable: {}\n\tDownloadable: {}\n\tWriteable: {}\n\tRate limits hit: {}\n".format(
-            self.metadata['total'],
-            "{:.2f}".format(100*(1 - (self.metadata['failed_hit']/self.metadata['total']))),
-            self.metadata['denied'],
-            self.metadata['disabled'],
-            self.metadata['open_list'],
-            self.metadata['open_read'],
-            self.metadata['open_write'],
-            self.metadata['rate_limits']
-        ))
+        self.logger.log("HUNTER","INFO",f"\nResults:\n" + \
+            f"\tTotal tries: {total}\n" + \
+            f"\tPercent Valid: {valid}%\n" + \
+            f"\tDenied: {denied}\n" + \
+            f"\tDisabled: {disabled}\n" + \
+            f"\tListable: {listable}\n" + \
+            f"\tDownloadable: {downloadable}\n" + \
+            f"\tWriteable: {writeable}\n" + \
+            f"\tRate limits hit: {ratelimits}\n"
+        )
         self.logger.log("HUNTER","INFO","Downloadable buckets:{}\n".format("".join(
             {("\n\t"+name if self.buckets[name].download else "") for name in self.buckets.keys()}
         )))
