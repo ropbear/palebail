@@ -66,6 +66,9 @@ def main():
     parser.add_argument("-v", "--verbose", dest="verbose",
         help="""Verbose mode, log everything to stdout and logfile""",
         action="store_true")
+    parser.add_argument("-U", "--user-agent", dest="useragent",
+        help="""Speicfy a custom user-agent string""",
+        metavar="useragent")
 
 
     args = parser.parse_args()
@@ -88,11 +91,17 @@ def main():
         LOGGER.verbosity = 3
     LOGGER.log("PALEBAIL","STAT","Starting up Palebail")
 
-    hunter = Hunter(args.modifiers,args.keyword,args.wordlist,args.threads,LOGGER)
+    hunter = Hunter(
+        args.modifiers,
+        args.keyword,
+        args.wordlist,
+        args.threads,
+        LOGGER
+    )
 
     # Main sequence and exception handling
     try:
-        hunter.logger = LOGGER
+        hunter.useragent = args.useragent
         hunter.COMBINATORS = COMBINATORS
         hunter.BADCHARS = BADCHARS
         hunter.hunt()
@@ -101,6 +110,7 @@ def main():
     except Exception as e:
         LOGGER.log("PALEBAIL","ERRO",e)
     finally:
+        hunter.report()
         hunter.status()
         LOGGER.log("PALEBAIL","STAT","Shutting down.")
         LOGGER.cleanup()

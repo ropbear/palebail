@@ -4,9 +4,6 @@ import requests
 
 # GLOBALS
 TIMEOUT = 3
-HEADERS = {
-    "User-Agent":"Palebail v0.2.0"
-}
 
 # HELPERS
 def xml_prettyprint(root):
@@ -47,7 +44,9 @@ class Bucket:
     download = False
     write = False
     meta = ""
-
+    headers = {
+        "User-Agent":"Palebail v0.2.0"
+    }
     def __init__(self,name,badchars):
         #TODO: make this a list instead of string, enumerating possible names based on
         # the original name
@@ -58,11 +57,11 @@ class Bucket:
         self.url = "https://{}.s3.amazonaws.com/".format(self.name)
     
     def checkRateLimit(self):
-        r = requests.get(self.url+"?location",timeout=TIMEOUT,headers=HEADERS)
+        r = requests.get(self.url+"?location",timeout=TIMEOUT,headers=self.headers)
         return True if ET.fromstring(r.text)[0].text != "NoSuchBucket" else False
 
     def retrieveData(self,seshObj=False,params=""):
-        r = requests.get(self.url+params,headers=HEADERS,timeout=TIMEOUT)
+        r = requests.get(self.url+params,headers=self.headers,timeout=TIMEOUT)
         return ET.fromstring(r.text) if not seshObj else r
 
     def isReadable(self,testURL):
@@ -71,7 +70,7 @@ class Bucket:
         INPUT: Bucket object, URL for testing downloadablity
         RETURN: True if contents can be downloaded / read
         """
-        r = requests.get(testURL,timeout=TIMEOUT,headers=HEADERS)
+        r = requests.get(testURL,timeout=TIMEOUT,headers=self.headers)
         if "AccessDenied" not in r.text and "NoSuchKey" not in r.text:
             return True
         else:

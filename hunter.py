@@ -13,6 +13,7 @@ class Hunter:
         self.COMBINATORS = []
         self.BADCHARS = []
         self.THREADMAX = 20
+        self.useragent = ""
 
         # begin session
         self.session = requests.session()
@@ -58,7 +59,8 @@ class Hunter:
             self.threads = 1
 
         self.buckets = {}
-        self.processes = [] 
+        self.processes = []
+        
 
     def rotateIP(self):
         """
@@ -100,10 +102,8 @@ class Hunter:
             self.metadata['failed_hit'] += 1
         elif bucket.status == 1:
             self.metadata['denied'] += 1
-            self.metadata['failed_hit'] += 1
         elif bucket.status == 2:
             self.metadata['disabled'] += 1
-            self.metadata['failed_hit'] += 1
         elif bucket.status == 3:
             self.logger.log("HUNTER","INFO","{} is open, URL: {}".format(bucket.name,bucket.url))
             self.metadata['open_list'] += 1
@@ -118,23 +118,35 @@ class Hunter:
         """
         # init Bucket object
         bucket = Bucket(cur_name,self.BADCHARS)
-
+        if self.useragent:
+            bucket.headers = {
+                "User-Agent":self.useragent
+            }
         # assign state of bucket and associated objects
         if self.getBucketState(bucket):
             
             testURL = bucket.enumContent()
-            # then, see if the contents are readable
-            if bucket.isReadable(testURL):
+            readable = bucket.isReadable(testURL)
+            writeable = bucket.isWriteable(testURL)
+            # must handle all four states, as they are independent of each other
+            if readable and writeable:
+                bucket.status = 5
+                self.metadata['open_read'] += 1
+                self.metadata['open_write'] += 1
+                self.metadata['open_list'] -= 1
+                bucket.download = True
+                bucket.write = True
+            elif readable and not writeable:
                 bucket.status = 4
                 self.metadata['open_read'] += 1
-                # if so, mark for download
+                self.metadata['open_list'] -= 1
                 bucket.download = True
-            # finally, check to see if it is writeable
-            if bucket.isWriteable():
+            elif writeable and not readable:
                 bucket.status = 5
                 self.metadata['open_write'] += 1
                 bucket.write = True
-        
+            else:
+                return
         # if the rate limit is hit, conduct avoidance
         elif bucket.status == -1:
             if not self.doRateLimitAvoid(bucket): # NOT THREADSAFE
@@ -206,12 +218,20 @@ class Hunter:
                 thread._threads_queues.clear()
                 raise
 
-                    
+        self.report()
+        return self.metadata['total']
+
+
+    def report(self):
+        """
+        PURPOSE: provide a function to compile all found data
+        INPUT: Self
+        RETURN: None
+        """
         self.logger.log("HUNTER","STAT","Parsing complete, compiling data...")
         for name in self.buckets.keys():
             # writing to a file/stdout was not threadsafe
             self.recordBucket(self.buckets[name])
-        return self.metadata['total']
 
     def status(self):
         # log hunt meta results
@@ -224,6 +244,14 @@ class Hunter:
             )
         except ZeroDivisionError:
             valid = "{:.2f}".format(0)
+        try:
+            accessible = "{:.2f}".format(100*(1 - (
+                (self.metadata['open_list']+self.metadata['open_read']+self.metadata['open_write']) / \
+                (self.metadata['total'] - self.metadata['failed_hit'])
+                ))
+            )
+        except ZeroDivisionError:
+            accessible = "{:.2f}".format(0)
         denied = self.metadata['denied']
         disabled = self.metadata['disabled']
         listable = self.metadata['open_list']
@@ -233,7 +261,8 @@ class Hunter:
         self.logger.log("HUNTER","STAT","Hunt complete.")
         self.logger.log("HUNTER","INFO",f"\nResults:\n" + \
             f"\tTotal tries: {total}\n" + \
-            f"\tPercent Valid: {valid}%\n" + \
+            f"\tPercent valid: {valid}%\n" + \
+            f"\tPercent of valid & accessible: {accessible}%\n" + \
             f"\tDenied: {denied}\n" + \
             f"\tDisabled: {disabled}\n" + \
             f"\tListable: {listable}\n" + \
