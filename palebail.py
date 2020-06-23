@@ -34,7 +34,6 @@ reserved = [";","/","?",":","@","&","=","+","$",",","."]
 BADCHARS = control+delims+unwise+reserved
 
 
-
 # MAIN
 def main():
     global SILENT, VERBOSE, COMBINATORS, LOGGER

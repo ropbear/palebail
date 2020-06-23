@@ -1,6 +1,6 @@
 from bucket import Bucket
 import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, thread
 
 class Hunter:
     """
@@ -196,6 +196,16 @@ class Hunter:
                 # ... then kick off a thread for each name.
                 for fname in fnames:
                     self.processes.append(executor.submit(self.parseBucket,fname))
+            # everything is submitted to futures immediately, so interrupt handling
+            # is done here
+            try:
+                for future in as_completed(self.processes):
+                    future.result()
+            except KeyboardInterrupt:
+                executor._threads.clear()
+                thread._threads_queues.clear()
+                raise
+
                     
         self.logger.log("HUNTER","STAT","Parsing complete, compiling data...")
         for name in self.buckets.keys():
