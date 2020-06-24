@@ -1,6 +1,6 @@
 # palebail
 
-I was going to write a bunch of stuff for this, but you get the idea. Open S3 buckets bad, "cloud" infra security good. This was a private project for a while but I'm not working on it anymore so might as well make it public.
+Open S3 buckets bad, "cloud" infra security good.
 
 **WARNING:** Using this tool can get your IP rate-limited by Amazon. You have been warned.
 
