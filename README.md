@@ -2,7 +2,11 @@
 
 Open S3 buckets bad, "cloud" infra security good.
 
-**WARNING:** Using this tool can get your IP rate-limited by Amazon. You have been warned.
+## WARNING
+
+Using this tool can get your IP rate-limited by Amazon and may violate parts of their [Acceptable Use Policy](https://aws.amazon.com/aup/), which could result in your account getting locked. Please be aware of the consequences and do your research, as I am not responsible for making sure that you do so.
+
+I have integrated [FireProx](https://github.com/ustayready/fireprox) as best as I could, but it's only good for about 20 requests before causing `TooManyRequests` errors from the API Gateway. It's also very, very slow.
 
 ### Usage
 
@@ -28,6 +32,7 @@ optional arguments:
   -s, --silent          Silent mode - only prints Found buckets
   -v, --verbose         Verbose mode, log everything to stdout and logfile
   -t, --threads         Number of threads to use
+  -p, --proxy           Specify whether or not to use AWS API Gateway (must have ~/.aws/credentials)
 ```
 ### Examples
 
@@ -51,3 +56,6 @@ palebail.py -w wordlists/wlist.txt -s
 
 2. https://gist.githubusercontent.com/erikig/826f49442929e9ecfab6d7c481870700/raw/95f5fa24102ab610a37564b200e5acffe75a8ace/common-domain-prefix-suffix-list.tsv
   - originall found via https://news.ycombinator.com/item?id=23287419
+
+3. https://github.com/ustayready/fireprox/blob/master/fire.py for AWS API Gateway redirection
+

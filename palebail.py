@@ -18,21 +18,18 @@ from argparse import ArgumentParser
 from hunter import Hunter
 from logger import Logger
 
-
-
 # GLOBALS
 SILENT = False
 VERBOSE = False
 # Configure combinators/joining characters
-COMBINATORS = ["-","","_"]
+COMBINATORS = ["-",""] # API gateways dislike '_'
 # a little lesson in RFC-1738 and RFC-2396 via StackOverflow
 # https://stackoverflow.com/questions/1547899/which-characters-make-a-url-invalid
 control = [chr(x) for x in range(0,0x20)]
 delims = ["<",">","#","%",'"']
 unwise = ["{","}","|","\\","^","[","]","`"," "]
-reserved = [";","/","?",":","@","&","=","+","$",","]
+reserved = [";","/","?",":","@","&","=","+","$",",","."]
 BADCHARS = control+delims+unwise+reserved
-
 
 
 # MAIN
@@ -67,7 +64,12 @@ def main():
     parser.add_argument("-v", "--verbose", dest="verbose",
         help="""Verbose mode, log everything to stdout and logfile""",
         action="store_true")
-
+    parser.add_argument("-U", "--user-agent", dest="useragent",
+        help="""Speicfy a custom user-agent string""",
+        metavar="useragent")
+    parser.add_argument("-p", "--proxy", dest="require_proxy",
+        help="""Use ~/.aws/credentials to build API Gateway and proxy traffic to avoid Rate Limiting""",
+        action="store_true")
 
     args = parser.parse_args()
 
@@ -89,20 +91,35 @@ def main():
         LOGGER.verbosity = 3
     LOGGER.log("PALEBAIL","STAT","Starting up Palebail")
 
-    hunter = Hunter(args.modifiers,args.keyword,args.wordlist,args.threads,LOGGER)
+    hunter = Hunter(
+        args.modifiers,
+        args.keyword,
+        args.wordlist,
+        args.threads,
+        LOGGER
+    )
 
     # Main sequence and exception handling
     try:
-        hunter.logger = LOGGER
+        hunter.useragent = args.useragent
         hunter.COMBINATORS = COMBINATORS
         hunter.BADCHARS = BADCHARS
+        hunter.require_proxy = args.require_proxy
         hunter.hunt()
     except KeyboardInterrupt:
         LOGGER.log("PALEBAIL","ERRO","User interrupt")
     except Exception as e:
         LOGGER.log("PALEBAIL","ERRO",e)
     finally:
+        hunter.report()
         hunter.status()
+        if hunter.require_proxy:
+            for aid in hunter.active:
+                try:
+                    hunter.fp.delete_api(aid)
+                    hunter.fp.list_api(aid)
+                except:
+                    pass
         LOGGER.log("PALEBAIL","STAT","Shutting down.")
         LOGGER.cleanup()
         return 0

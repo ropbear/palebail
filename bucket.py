@@ -1,3 +1,4 @@
+#/usr/bin/env python3
 from xml.dom import minidom
 import xml.etree.ElementTree as ET
 import requests
@@ -44,7 +45,10 @@ class Bucket:
     download = False
     write = False
     meta = ""
-
+    headers = {
+        "User-Agent":"Palebail v0.2.0"
+    }
+    
     def __init__(self,name,badchars):
         #TODO: make this a list instead of string, enumerating possible names based on
         # the original name
@@ -55,11 +59,11 @@ class Bucket:
         self.url = "https://{}.s3.amazonaws.com/".format(self.name)
     
     def checkRateLimit(self):
-        r = requests.get(self.url+"?location",timeout=TIMEOUT)
+        r = requests.get(self.url+"?location",timeout=TIMEOUT,headers=self.headers)
         return True if ET.fromstring(r.text)[0].text != "NoSuchBucket" else False
 
     def retrieveData(self,seshObj=False,params=""):
-        r = requests.get(self.url+params)
+        r = requests.get(self.url+params,headers=self.headers,timeout=TIMEOUT)
         return ET.fromstring(r.text) if not seshObj else r
 
     def isReadable(self,testURL):
@@ -68,12 +72,13 @@ class Bucket:
         INPUT: Bucket object, URL for testing downloadablity
         RETURN: True if contents can be downloaded / read
         """
-        r = requests.get(testURL,timeout=TIMEOUT)
+        r = requests.get(testURL,timeout=TIMEOUT,headers=self.headers)
         if "AccessDenied" not in r.text and "NoSuchKey" not in r.text:
             return True
         else:
-            return False
             self.status = 4
+            return False
+            
 
     def isWriteable(self,retryURL=None):
         """
@@ -94,7 +99,7 @@ class Bucket:
             Don't be a mouse! Close
             your S3 bucket so it's
             not world-writeable :)
-                     /\_/\\
+                     /\\_/\\
                     ( o.o )
                      > ^ <
             """,
