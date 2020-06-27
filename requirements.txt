@@ -5,3 +5,4 @@ pathlib
 argparse
 datetime
 xml
+boto3

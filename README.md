@@ -28,6 +28,7 @@ optional arguments:
   -s, --silent          Silent mode - only prints Found buckets
   -v, --verbose         Verbose mode, log everything to stdout and logfile
   -t, --threads         Number of threads to use
+  -p, --proxy           Specify whether or not to use AWS API Gateway (must have ~/.aws/credentials)
 ```
 ### Examples
 
@@ -51,3 +52,5 @@ palebail.py -w wordlists/wlist.txt -s
 
 2. https://gist.githubusercontent.com/erikig/826f49442929e9ecfab6d7c481870700/raw/95f5fa24102ab610a37564b200e5acffe75a8ace/common-domain-prefix-suffix-list.tsv
   - originall found via https://news.ycombinator.com/item?id=23287419
+
+3. https://github.com/ustayready/fireprox/blob/master/fire.py for AWS API Gateway redirection

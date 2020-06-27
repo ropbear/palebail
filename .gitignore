@@ -6,3 +6,4 @@ loot/*
 __pycache__/*
 *.pyc
 TODO*
+.venv/*

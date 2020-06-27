@@ -1,6 +1,13 @@
+#/usr/bin/env python3
 from bucket import Bucket
+from fire import FireProx
+import os, sys
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed, thread
+
+class RateLimit(Exception):
+    def __init__(self,msg):
+        super().__init__(msg)
 
 class Hunter:
     """
@@ -14,6 +21,10 @@ class Hunter:
         self.BADCHARS = []
         self.THREADMAX = 20
         self.useragent = ""
+        self.active = []
+        self.require_proxy = False
+        self.proxy_up = False
+        self.threads = 1
 
         # begin session
         self.session = requests.session()
@@ -60,17 +71,25 @@ class Hunter:
 
         self.buckets = {}
         self.processes = []
-        
 
-    def rotateIP(self):
-        """
-        PURPOSE: Amazon rate-limits the requests to S3 by IP, so it must be rotated
-        INPUT: None
-        RETURN: None
-        """
-        # TODO implement IP rotation
-        self.logger.log("HUNTER","WARN","rotateIP() not yet implemented!")
-        pass
+        self.fp = FireProx()
+
+    def getCreds(self):
+        try:
+            with open(os.path.expanduser('~/.aws/credentials'),"r") as f:
+                lines = f.readlines()
+                for line in lines:
+                    l = line.split(" ")
+                    if len(l) == 3:
+                        key = l[0]
+                        value = l[2]
+                        if key == "aws_access_key_id":
+                            self.fp.access_key = value.strip()
+                        elif key == "aws_secret_access_key":
+                            self.fp.secret_access_key = value.strip()
+        except:
+            self.logger.log("FIREPROX","ERRO","Unable to read aws credential file")
+            sys.exit(1)
 
     def doRateLimitAvoid(self,lastBucket):
         """
@@ -78,13 +97,10 @@ class Hunter:
         INPUT: bucket objcet
         RETURN: Boolean
         """
-        self.rotateIP()
-        # TODO retry same bucket name
         lastBucket.status = -1
         self.metadata['rate_limits'] += 1
         self.metadata['failed_hit'] += 1
-        self.logger.log("HUNTER","WARN","{} Rate limit hit".format(lastBucket.name))
-        return False
+        raise RateLimit("Rate limit hit, try -p/--proxy (must have aws creds)")
 
     def getBucketState(self,bucket):
         """
@@ -116,15 +132,18 @@ class Hunter:
         INPUT: Self, Bucket Name
         RETURN: None
         """
-        # init Bucket object
         bucket = Bucket(cur_name,self.BADCHARS)
+        if self.require_proxy:
+            self.getCreds()
+            self.fp.create_api(bucket.url)
+            self.active.insert(0,self.fp.api_id)
+            bucket.url = self.fp.proxy
         if self.useragent:
             bucket.headers = {
                 "User-Agent":self.useragent
             }
         # assign state of bucket and associated objects
         if self.getBucketState(bucket):
-            
             testURL = bucket.enumContent()
             readable = bucket.isReadable(testURL)
             writeable = bucket.isWriteable(testURL)
@@ -149,9 +168,8 @@ class Hunter:
                 return
         # if the rate limit is hit, conduct avoidance
         elif bucket.status == -1:
-            if not self.doRateLimitAvoid(bucket): # NOT THREADSAFE
-                return self.metadata['total']
-
+            self.doRateLimitAvoid(bucket)
+            return 
         # store the bucket data in memory
         if bucket.status > 0: # if the bucket exists
             self.buckets[bucket.name] = bucket
@@ -162,11 +180,16 @@ class Hunter:
                 "Bucket {} is {}".format(bucket.name,replies[bucket.status])
             )
             bucket.meta = bucket.metadata()
-
+        if self.require_proxy:
+            self.active.remove(self.fp.api_id)
+            self.fp.delete_api(self.fp.api_id)
+            
     def recordBucket(self,bucket):
         if bucket.status <= 2:
             return # bucket DNE or disabled / denied
+        replies = ["non-existent","denied","disabled","open","readable","writeable"]
         self.logger.log("HUNTER","INFO","######## Record for {} ########".format(bucket.name))
+        self.logger.log("HUNTER","INFO","{} is {}".format(bucket.name,replies[bucket.status]))
         if bucket.meta:
             self.logger.log(
                 "HUNTER",
@@ -175,7 +198,7 @@ class Hunter:
             )
 
         # list the content, get a valid URL to test
-        self.logger.log("HUNTER","INFO","Listing {}".format(bucket.name))
+        self.logger.log("HUNTER","INFO","Listing {}".format(bucket.url))
         self.logger.log("HUNTER","INFO","\n{}".format(bucket.content))
 
         self.logger.log("HUNTER","INFO","######## End of Record ########")
@@ -201,6 +224,9 @@ class Hunter:
         INPUT: Self
         RETURN: Number of attempts
         """
+        if self.require_proxy and self.threads != 1:
+            self.threads = 1
+            self.logger.log("FIREPROX","WARN","FireProx can only be run single threaded")
         with ThreadPoolExecutor(max_workers=self.threads) as executor:
             for k in self.keywords:
                 # permutate the names based on the modifiers wordlist...
@@ -213,14 +239,13 @@ class Hunter:
             try:
                 for future in as_completed(self.processes):
                     future.result()
-            except KeyboardInterrupt:
+            except:
                 executor._threads.clear()
                 thread._threads_queues.clear()
                 raise
 
         self.report()
         return self.metadata['total']
-
 
     def report(self):
         """
@@ -237,18 +262,18 @@ class Hunter:
         # log hunt meta results
         total = self.metadata['total']
         try:
-            valid = "{:.2f}".format(100*(1 - (
-                (self.metadata['open_list']+self.metadata['open_read']+self.metadata['open_write']) / \
-                (self.metadata['total'] - self.metadata['failed_hit'])
-                ))
+            valid = "{:.2f}".format(100*(
+                (self.metadata['total'] - self.metadata['failed_hit']) / \
+                total
+                )
             )
         except ZeroDivisionError:
             valid = "{:.2f}".format(0)
         try:
-            accessible = "{:.2f}".format(100*(1 - (
+            accessible = "{:.2f}".format(100*(
                 (self.metadata['open_list']+self.metadata['open_read']+self.metadata['open_write']) / \
                 (self.metadata['total'] - self.metadata['failed_hit'])
-                ))
+                )
             )
         except ZeroDivisionError:
             accessible = "{:.2f}".format(0)
@@ -276,4 +301,5 @@ class Hunter:
         self.logger.log("HUNTER","INFO","Writeable buckets:{}\n".format("".join(
             {("\n\t"+name if self.buckets[name].write else "") for name in self.buckets.keys()}
         )))
+        self.logger.log("HUNTER","INFO","Log stored to {}".format(self.logger.logpath))
         return 0
