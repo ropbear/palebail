@@ -8,6 +8,8 @@ Using this tool can get your IP rate-limited by Amazon and may violate parts of 
 
 I have integrated [FireProx](https://github.com/ustayready/fireprox) as best as I could, but it's only good for about 20 requests before causing `TooManyRequests` errors from the API Gateway. It's also very, very slow.
 
+Additionally, using the proxy can result in some extraneous API Gateways left up (usually just one). Since it's pay-by-volume (and about $1.00 USD for 1million requests), this isn't a huge issue, but please be aware of it. Currently working on a fix.
+
 ### Usage
 
 #### Screenshot
