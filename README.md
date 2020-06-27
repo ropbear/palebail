@@ -58,3 +58,4 @@ palebail.py -w wordlists/wlist.txt -s
   - originall found via https://news.ycombinator.com/item?id=23287419
 
 3. https://github.com/ustayready/fireprox/blob/master/fire.py for AWS API Gateway redirection
+
