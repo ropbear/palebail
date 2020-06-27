@@ -1,8 +1,12 @@
 # palebail
 
-I was going to write a bunch of stuff for this, but you get the idea. Open S3 buckets bad, "cloud" infra security good. This was a private project for a while but I'm not working on it anymore so might as well make it public.
+Open S3 buckets bad, "cloud" infra security good.
 
-**WARNING:** Using this tool can get your IP rate-limited by Amazon. You have been warned.
+## WARNING
+
+Using this tool can get your IP rate-limited by Amazon and may violate parts of their [Acceptable Use Policy](https://aws.amazon.com/aup/), which could result in your account getting locked. Please be aware of the consequences and do your research, as I am not responsible for making sure that you do so.
+
+I have integrated [FireProx](https://github.com/ustayready/fireprox) as best as I could, but it's only good for about 20 requests before causing `TooManyRequests` errors from the API Gateway. It's also very, very slow.
 
 ### Usage
 
