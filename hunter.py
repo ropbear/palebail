@@ -244,7 +244,6 @@ class Hunter:
                 thread._threads_queues.clear()
                 raise
 
-        self.report()
         return self.metadata['total']
 
     def report(self):
